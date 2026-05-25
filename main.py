@@ -24,8 +24,9 @@ class MenuBaru(BaseModel):
 
 
 class PesananBaru(BaseModel):
-    nama_pembeli: str
     menu_id: int
+    nama_pembeli: str
+    catatan: str = ""
 
 
 # --- DATABASE UTILITY ---
@@ -131,30 +132,33 @@ def tambah_menu(menu: MenuBaru):
 
 
 # 3. Ambil Semua Pesanan (Dapur Monitor)
-@app.get("/api/pesanan")
-def ambil_pesanan():
-    koneksi = sqlite3.connect("pesandulu.db")
-    koneksi.row_factory = sqlite3.Row
-    kursor = koneksi.cursor()
-    kursor.execute("""
-        SELECT p.id, p.nama_pembeli, m.nama_makanan, m.nama_toko, m.harga 
-        FROM pesanan_kuliner p
-        JOIN menu_kuliner m ON p.menu_id = m.id
-    """)
-    semua_pesanan = kursor.fetchall()
-    koneksi.close()
+@app.post("/api/pesanan")
+def buat_pesanan(data: PesananBaru):
+    try:
+        # Cari data menu untuk mengambil nama makanan, nama toko, dan harga
+        menu_terpilih = next(
+            (m for m in database_simulasi["menu"] if m["id"] == data.menu_id), None
+        )
+        if not menu_terpilih:
+            raise HTTPException(status_code=404, detail="Menu tidak ditemukan")
 
-    daftar_pesanan = [
-        {
-            "id": b["id"],
-            "nama_pembeli": b["nama_pembeli"],
-            "nama_makanan": b["nama_makanan"],
-            "nama_toko": b["nama_toko"],
-            "harga": b["harga"],
+        id_baru = len(database_simulasi["pesanan"]) + 1
+        pesanan_baru = {
+            "id": id_baru,
+            "menu_id": data.menu_id,
+            "nama_pembeli": data.nama_pembeli,
+            "nama_makanan": menu_terpilih["nama_makanan"],
+            "nama_toko": menu_terpilih["nama_toko"],
+            "harga": menu_terpilih["harga"],
+            "catatan": data.catatan,  # <-- Simpan catatan rasa ke database
+            "status": "Diproses",
         }
-        for b in semua_pesanan
-    ]
-    return {"pesanan": daftar_pesanan}
+        database_simulasi["pesanan"].append(pesanan_baru)
+        return {"status": "sukses", "pesanan": pesanan_baru}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Gagal memproses pesanan: {str(e)}"
+        ) from e
 
 
 # 4. Tambah Pesanan Baru
